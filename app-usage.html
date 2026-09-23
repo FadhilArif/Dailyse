@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tracking App - Runut</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="nav-root"></div>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="app-title">Tracking App</div>
+        <div class="greeting" id="greeting-text">Halo</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:12px;">Setor Penggunaan Hari Ini</h3>
+      <p style="color:var(--muted); font-size:13px; margin-bottom:12px;">
+        Isi durasi pemakaian tiap aplikasi (menit) untuk tanggal di bawah. Data ini yang dirata-ratakan di Dashboard.
+      </p>
+      <div class="field">
+        <label>Tanggal</label>
+        <input type="date" id="entry-date" style="max-width:200px;" onchange="loadEntryDate()">
+      </div>
+      <div id="entry-rows"></div>
+      <button class="btn ghost" onclick="addRow()">+ Tambah aplikasi</button>
+      <div style="margin-top:12px;">
+        <button class="btn" onclick="saveEntries()">Simpan Semua</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:12px;">Riwayat Terbaru</h3>
+      <table>
+        <thead><tr><th>Tanggal</th><th>Aplikasi</th><th>Durasi</th><th style="width:70px;"></th></tr></thead>
+        <tbody id="history-body"></tbody>
+      </table>
+      <div id="history-empty" class="empty" style="display:none;">Belum ada riwayat penggunaan aplikasi.</div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script>
+let rowCounter = 0;
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  const { data: profile } = await supabaseClient.from('profiles').select('full_name').eq('id', user.id).single();
+  renderNav('usage', profile?.full_name || user.email);
+  document.getElementById('entry-date').value = todayStr();
+  loadEntryDate();
+  loadHistory();
+})();
+
+function addRow(app = '', menit = '') {
+  rowCounter++;
+  const wrap = document.getElementById('entry-rows');
+  const div = document.createElement('div');
+  div.className = 'field-row';
+  div.id = 'row-' + rowCounter;
+  div.innerHTML = `
+    <div class="field"><input type="text" placeholder="Nama aplikasi (mis. MLBB)" value="${app}" data-role="app"></div>
+    <div class="field" style="max-width:140px;"><input type="number" min="0" placeholder="Menit" value="${menit}" data-role="menit"></div>
+    <button class="btn danger" style="height:38px;" onclick="document.getElementById('row-${rowCounter}').remove()">Hapus</button>`;
+  wrap.appendChild(div);
+}
+
+async function loadEntryDate() {
+  document.getElementById('entry-rows').innerHTML = '';
+  const date = document.getElementById('entry-date').value;
+  const { data } = await supabaseClient.from('app_usage_tracking').select('*').eq('tanggal', date);
+  if (data && data.length > 0) {
+    data.forEach(d => addRow(d.nama_app, d.durasi_menit));
+  } else {
+    addRow();
+  }
+}
+
+async function saveEntries() {
+  const date = document.getElementById('entry-date').value;
+  if (!date) { showToast('Pilih tanggal dulu'); return; }
+  const user = (await supabaseClient.auth.getUser()).data.user;
+
+  // Hapus entri lama di tanggal ini, lalu simpan ulang (menghindari duplikat)
+  await supabaseClient.from('app_usage_tracking').delete().eq('tanggal', date);
+
+  const rows = [...document.getElementById('entry-rows').children];
+  const payload = rows.map(r => ({
+    user_id: user.id,
+    tanggal: date,
+    nama_app: r.querySelector('[data-role="app"]').value.trim(),
+    durasi_menit: parseInt(r.querySelector('[data-role="menit"]').value || '0', 10),
+  })).filter(p => p.nama_app);
+
+  if (payload.length > 0) {
+    await supabaseClient.from('app_usage_tracking').insert(payload);
+  }
+  showToast('Penggunaan aplikasi tersimpan');
+  loadHistory();
+}
+
+async function loadHistory() {
+  const { data } = await supabaseClient
+    .from('app_usage_tracking')
+    .select('*')
+    .order('tanggal', { ascending: false })
+    .limit(30);
+
+  const body = document.getElementById('history-body');
+  const empty = document.getElementById('history-empty');
+  if (!data || data.length === 0) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  body.innerHTML = data.map(d => `
+    <tr>
+      <td>${d.tanggal}</td>
+      <td style="font-weight:600;">${d.nama_app}</td>
+      <td>${d.durasi_menit} menit</td>
+      <td><button class="btn danger" onclick="deleteEntry('${d.id}')">Hapus</button></td>
+    </tr>`).join('');
+}
+
+async function deleteEntry(id) {
+  if (!confirm('Hapus data ini?')) return;
+  await supabaseClient.from('app_usage_tracking').delete().eq('id', id);
+  loadHistory();
+}
+</script>
+</body>
+</html>

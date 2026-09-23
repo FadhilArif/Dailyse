@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Activity - Runut</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="nav-root"></div>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="app-title">Daily Activity</div>
+        <div class="greeting" id="greeting-text">Halo</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div class="date-nav">
+          <button class="btn secondary" onclick="changeDate(-1)">←</button>
+          <input type="date" id="date-picker" onchange="onDatePicked()">
+          <button class="btn secondary" onclick="changeDate(1)">→</button>
+          <button class="btn ghost" onclick="goToday()">Hari ini</button>
+        </div>
+        <div class="stat" style="align-items:flex-end;">
+          <span class="label">Progres</span>
+          <span class="value" id="day-progress">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="list-card">
+      <div id="activity-empty" class="empty" style="display:none;">
+        Belum ada rencana untuk tanggal ini.
+        <div><button class="btn secondary" onclick="generateFromTemplate()">Buat dari Set Daily</button></div>
+      </div>
+      <div id="activity-list"></div>
+      <div style="margin-top:14px;">
+        <button class="btn ghost" onclick="addExtra()">+ Tambah kegiatan lain hari ini</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script>
+let currentDate = todayStr();
+let rows = [];
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  const { data: profile } = await supabaseClient.from('profiles').select('full_name').eq('id', user.id).single();
+  renderNav('activity', profile?.full_name || user.email);
+  document.getElementById('date-picker').value = currentDate;
+  loadDay();
+})();
+
+function onDatePicked() {
+  currentDate = document.getElementById('date-picker').value;
+  loadDay();
+}
+function changeDate(delta) {
+  currentDate = addDays(currentDate, delta);
+  document.getElementById('date-picker').value = currentDate;
+  loadDay();
+}
+function goToday() {
+  currentDate = todayStr();
+  document.getElementById('date-picker').value = currentDate;
+  loadDay();
+}
+
+async function loadDay() {
+  const { data } = await supabaseClient
+    .from('daily_activity_log')
+    .select('*')
+    .eq('tanggal', currentDate)
+    .order('urutan', { ascending: true });
+  rows = data || [];
+  renderList();
+}
+
+function renderList() {
+  const list = document.getElementById('activity-list');
+  const empty = document.getElementById('activity-empty');
+
+  if (rows.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('day-progress').textContent = '-';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const done = rows.filter(r => r.ceklis).length;
+  document.getElementById('day-progress').textContent = Math.round((done / rows.length) * 100) + '%';
+
+  list.innerHTML = rows.map(r => `
+    <div class="card" style="margin-top:10px; padding:14px 16px;">
+      <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+        <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; flex:1;">
+          <input type="checkbox" style="width:auto; margin-top:3px;" ${r.ceklis ? 'checked' : ''} onchange="toggleCeklis('${r.id}', this.checked)">
+          <div style="flex:1;">
+            <input type="text" value="${r.kegiatan.replace(/"/g, '&quot;')}" style="border:none; background:none; font-weight:600; padding:0; font-size:14.5px;" onchange="updateField('${r.id}','kegiatan',this.value)">
+            <div style="color:var(--muted); font-size:12px; margin-top:2px;">
+              <input type="time" value="${r.jam_mulai || ''}" style="display:inline-block; width:auto; border:none; padding:0; font-size:12px; color:var(--muted);" onchange="updateField('${r.id}','jam_mulai',this.value)">
+              -
+              <input type="time" value="${r.jam_selesai || ''}" style="display:inline-block; width:auto; border:none; padding:0; font-size:12px; color:var(--muted);" onchange="updateField('${r.id}','jam_selesai',this.value)">
+            </div>
+          </div>
+        </label>
+        <button class="btn danger" style="padding:6px 10px;" onclick="removeItem('${r.id}')">Hapus</button>
+      </div>
+      <textarea placeholder="Keterangan / catatan..." style="margin-top:10px; min-height:44px;" onchange="updateField('${r.id}','keterangan',this.value)">${r.keterangan || ''}</textarea>
+    </div>`).join('');
+}
+
+async function generateFromTemplate() {
+  const { data: template } = await supabaseClient.from('daily_plan_template').select('*').order('urutan', { ascending: true });
+  if (!template || template.length === 0) {
+    showToast('Rencana harian masih kosong, atur dulu di menu Set Daily');
+    return;
+  }
+  const user = (await supabaseClient.auth.getUser()).data.user;
+  const payload = template.map(t => ({
+    user_id: user.id,
+    tanggal: currentDate,
+    template_id: t.id,
+    jam_mulai: t.jam_mulai,
+    jam_selesai: t.jam_selesai,
+    kegiatan: t.kegiatan,
+    urutan: t.urutan,
+    ceklis: false,
+  }));
+  await supabaseClient.from('daily_activity_log').insert(payload);
+  showToast('Rencana hari ini dibuat dari Set Daily');
+  loadDay();
+}
+
+async function addExtra() {
+  const user = (await supabaseClient.auth.getUser()).data.user;
+  const maxUrutan = rows.reduce((m, r) => Math.max(m, r.urutan || 0), -1);
+  const { data, error } = await supabaseClient.from('daily_activity_log').insert({
+    user_id: user.id,
+    tanggal: currentDate,
+    kegiatan: 'Kegiatan baru',
+    urutan: maxUrutan + 1,
+    ceklis: false,
+  }).select().single();
+  if (!error) { rows.push(data); renderList(); }
+}
+
+async function toggleCeklis(id, val) {
+  await supabaseClient.from('daily_activity_log').update({ ceklis: val }).eq('id', id);
+  const r = rows.find(x => x.id === id); if (r) r.ceklis = val;
+  const done = rows.filter(r => r.ceklis).length;
+  document.getElementById('day-progress').textContent = Math.round((done / rows.length) * 100) + '%';
+}
+
+async function updateField(id, field, value) {
+  await supabaseClient.from('daily_activity_log').update({ [field]: value }).eq('id', id);
+  showToast('Tersimpan');
+}
+
+async function removeItem(id) {
+  if (!confirm('Hapus kegiatan ini dari hari ini?')) return;
+  await supabaseClient.from('daily_activity_log').delete().eq('id', id);
+  rows = rows.filter(r => r.id !== id);
+  renderList();
+}
+</script>
+</body>
+</html>

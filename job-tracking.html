@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tracking Lamaran Kerja - Runut</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="nav-root"></div>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="app-title">Tracking Lamaran Kerja</div>
+        <div class="greeting" id="greeting-text">Halo</div>
+      </div>
+      <button class="btn" onclick="openForm()">+ Tambah Lamaran</button>
+    </div>
+
+    <div class="card" id="form-card" style="display:none;">
+      <h3 id="form-title" style="margin-bottom:12px;">Tambah Lamaran</h3>
+      <input type="hidden" id="edit-id">
+      <div class="field-row">
+        <div class="field">
+          <label>Tanggal Melamar</label>
+          <input type="date" id="f-tanggal" required>
+        </div>
+        <div class="field">
+          <label>Perusahaan</label>
+          <input type="text" id="f-perusahaan" placeholder="Nama perusahaan" required>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Kirim Via</label>
+          <select id="f-metode-pilihan" onchange="toggleMetodeLain()">
+            <option value="Email">Email</option>
+            <option value="Web Resmi">Website Resmi</option>
+            <option value="JobStreet">JobStreet</option>
+            <option value="LinkedIn">LinkedIn</option>
+            <option value="Lainnya">Lainnya...</option>
+          </select>
+        </div>
+        <div class="field" id="metode-lain-wrap" style="display:none;">
+          <label>Sebutkan</label>
+          <input type="text" id="f-metode-lain" placeholder="Contoh: Indeed, walk-in">
+        </div>
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select id="f-status">
+          <option value="Menunggu">Menunggu</option>
+          <option value="Diproses">Diproses</option>
+          <option value="Interview">Interview</option>
+          <option value="Diterima">Diterima</option>
+          <option value="Ditolak">Ditolak</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Hasil Akhir</label>
+        <textarea id="f-hasil" placeholder="Catatan hasil, misalnya jadwal interview atau alasan ditolak..."></textarea>
+      </div>
+      <div class="row-actions">
+        <button class="btn" onclick="saveItem()">Simpan</button>
+        <button class="btn secondary" onclick="closeForm()">Batal</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr><th>Tanggal</th><th>Perusahaan</th><th>Via</th><th>Status</th><th>Hasil</th><th style="width:100px;"></th></tr></thead>
+        <tbody id="job-body"></tbody>
+      </table>
+      <div id="job-empty" class="empty" style="display:none;">Belum ada lamaran yang dicatat.</div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script>
+let items = [];
+const STATUS_CLASS = { 'Menunggu':'status-menunggu', 'Diproses':'status-diproses', 'Interview':'status-interview', 'Diterima':'status-diterima', 'Ditolak':'status-ditolak' };
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  const { data: profile } = await supabaseClient.from('profiles').select('full_name').eq('id', user.id).single();
+  renderNav('job', profile?.full_name || user.email);
+  document.getElementById('f-tanggal').value = todayStr();
+  loadItems();
+})();
+
+function toggleMetodeLain() {
+  const v = document.getElementById('f-metode-pilihan').value;
+  document.getElementById('metode-lain-wrap').style.display = v === 'Lainnya' ? 'block' : 'none';
+}
+
+async function loadItems() {
+  const { data } = await supabaseClient.from('job_applications').select('*').order('tanggal_melamar', { ascending: false });
+  items = data || [];
+  renderItems();
+}
+
+function renderItems() {
+  const body = document.getElementById('job-body');
+  const empty = document.getElementById('job-empty');
+  if (items.length === 0) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  body.innerHTML = items.map(it => `
+    <tr>
+      <td>${it.tanggal_melamar}</td>
+      <td style="font-weight:600;">${it.perusahaan}</td>
+      <td>${it.metode_kirim || '-'}</td>
+      <td><span class="badge ${STATUS_CLASS[it.status] || ''}">${it.status}</span></td>
+      <td style="max-width:220px;">${it.hasil_akhir || '-'}</td>
+      <td class="row-actions">
+        <button class="btn secondary" onclick="editItem('${it.id}')">Edit</button>
+        <button class="btn danger" onclick="deleteItem('${it.id}')">Hapus</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openForm() {
+  document.getElementById('form-card').style.display = 'block';
+  document.getElementById('form-title').textContent = 'Tambah Lamaran';
+  document.getElementById('edit-id').value = '';
+  document.getElementById('f-tanggal').value = todayStr();
+  document.getElementById('f-perusahaan').value = '';
+  document.getElementById('f-metode-pilihan').value = 'Email';
+  document.getElementById('f-metode-lain').value = '';
+  document.getElementById('metode-lain-wrap').style.display = 'none';
+  document.getElementById('f-status').value = 'Menunggu';
+  document.getElementById('f-hasil').value = '';
+}
+function closeForm() { document.getElementById('form-card').style.display = 'none'; }
+
+function editItem(id) {
+  const it = items.find(x => x.id === id);
+  if (!it) return;
+  openForm();
+  document.getElementById('form-title').textContent = 'Edit Lamaran';
+  document.getElementById('edit-id').value = it.id;
+  document.getElementById('f-tanggal').value = it.tanggal_melamar;
+  document.getElementById('f-perusahaan').value = it.perusahaan;
+  const known = ['Email', 'Web Resmi', 'JobStreet', 'LinkedIn'];
+  if (known.includes(it.metode_kirim)) {
+    document.getElementById('f-metode-pilihan').value = it.metode_kirim;
+  } else {
+    document.getElementById('f-metode-pilihan').value = 'Lainnya';
+    document.getElementById('f-metode-lain').value = it.metode_kirim || '';
+    document.getElementById('metode-lain-wrap').style.display = 'block';
+  }
+  document.getElementById('f-status').value = it.status;
+  document.getElementById('f-hasil').value = it.hasil_akhir || '';
+}
+
+async function saveItem() {
+  const perusahaan = document.getElementById('f-perusahaan').value.trim();
+  const tanggal = document.getElementById('f-tanggal').value;
+  if (!perusahaan || !tanggal) { showToast('Tanggal dan nama perusahaan wajib diisi'); return; }
+
+  const pilihan = document.getElementById('f-metode-pilihan').value;
+  const metode = pilihan === 'Lainnya' ? document.getElementById('f-metode-lain').value.trim() : pilihan;
+
+  const payload = {
+    tanggal_melamar: tanggal,
+    perusahaan,
+    metode_kirim: metode,
+    status: document.getElementById('f-status').value,
+    hasil_akhir: document.getElementById('f-hasil').value.trim(),
+  };
+
+  const id = document.getElementById('edit-id').value;
+  if (id) {
+    await supabaseClient.from('job_applications').update(payload).eq('id', id);
+  } else {
+    const user = (await supabaseClient.auth.getUser()).data.user;
+    payload.user_id = user.id;
+    await supabaseClient.from('job_applications').insert(payload);
+  }
+  closeForm();
+  showToast('Tersimpan');
+  loadItems();
+}
+
+async function deleteItem(id) {
+  if (!confirm('Hapus catatan lamaran ini?')) return;
+  await supabaseClient.from('job_applications').delete().eq('id', id);
+  showToast('Dihapus');
+  loadItems();
+}
+</script>
+</body>
+</html>

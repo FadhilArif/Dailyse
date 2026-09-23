@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Set Daily - Runut</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="nav-root"></div>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="app-title">Set Daily</div>
+        <div class="greeting" id="greeting-text">Halo</div>
+      </div>
+      <button class="btn" onclick="openForm()">+ Tambah Kegiatan</button>
+    </div>
+
+    <p style="color:var(--muted); font-size:13.5px; margin-bottom:14px;">
+      Ini rencana harianmu. Perubahan di sini akan dipakai untuk hari-hari berikutnya di menu Daily Activity —
+      catatan yang sudah kamu isi di hari-hari sebelumnya tidak akan berubah.
+    </p>
+
+    <div class="card" id="form-card" style="display:none;">
+      <h3 id="form-title" style="margin-bottom:12px;">Tambah Kegiatan</h3>
+      <input type="hidden" id="edit-id">
+      <div class="field-row">
+        <div class="field">
+          <label>Jam Mulai</label>
+          <input type="time" id="f-jam-mulai">
+        </div>
+        <div class="field">
+          <label>Jam Selesai</label>
+          <input type="time" id="f-jam-selesai">
+        </div>
+      </div>
+      <div class="field">
+        <label>Kegiatan</label>
+        <input type="text" id="f-kegiatan" placeholder="Contoh: Olahraga" required>
+      </div>
+      <div class="row-actions">
+        <button class="btn" onclick="saveItem()">Simpan</button>
+        <button class="btn secondary" onclick="closeForm()">Batal</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr><th style="width:36px;"></th><th>Jam</th><th>Kegiatan</th><th style="width:110px;"></th></tr></thead>
+        <tbody id="template-body"></tbody>
+      </table>
+      <div id="template-empty" class="empty" style="display:none;">
+        Belum ada rencana harian. Mulai dengan menambah kegiatan pertama.
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script>
+let items = [];
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  const { data: profile } = await supabaseClient.from('profiles').select('full_name').eq('id', user.id).single();
+  renderNav('setdaily', profile?.full_name || user.email);
+  loadItems();
+})();
+
+async function loadItems() {
+  const { data, error } = await supabaseClient.from('daily_plan_template').select('*').order('urutan', { ascending: true });
+  items = data || [];
+  renderItems();
+}
+
+function renderItems() {
+  const body = document.getElementById('template-body');
+  const empty = document.getElementById('template-empty');
+  if (items.length === 0) {
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  body.innerHTML = items.map((it, idx) => `
+    <tr>
+      <td>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <button class="btn ghost" style="padding:2px;" onclick="move(${idx},-1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn ghost" style="padding:2px;" onclick="move(${idx},1)" ${idx === items.length - 1 ? 'disabled' : ''}>↓</button>
+        </div>
+      </td>
+      <td>${it.jam_mulai || '-'}${it.jam_selesai ? ' - ' + it.jam_selesai : ''}</td>
+      <td>${it.kegiatan}</td>
+      <td class="row-actions">
+        <button class="btn secondary" onclick="editItem('${it.id}')">Edit</button>
+        <button class="btn danger" onclick="deleteItem('${it.id}')">Hapus</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openForm() {
+  document.getElementById('form-card').style.display = 'block';
+  document.getElementById('form-title').textContent = 'Tambah Kegiatan';
+  document.getElementById('edit-id').value = '';
+  document.getElementById('f-jam-mulai').value = '';
+  document.getElementById('f-jam-selesai').value = '';
+  document.getElementById('f-kegiatan').value = '';
+}
+function closeForm() { document.getElementById('form-card').style.display = 'none'; }
+
+function editItem(id) {
+  const it = items.find(x => x.id === id);
+  if (!it) return;
+  openForm();
+  document.getElementById('form-title').textContent = 'Edit Kegiatan';
+  document.getElementById('edit-id').value = it.id;
+  document.getElementById('f-jam-mulai').value = it.jam_mulai || '';
+  document.getElementById('f-jam-selesai').value = it.jam_selesai || '';
+  document.getElementById('f-kegiatan').value = it.kegiatan;
+}
+
+async function saveItem() {
+  const kegiatan = document.getElementById('f-kegiatan').value.trim();
+  if (!kegiatan) { showToast('Nama kegiatan wajib diisi'); return; }
+  const id = document.getElementById('edit-id').value;
+  const payload = {
+    jam_mulai: document.getElementById('f-jam-mulai').value || null,
+    jam_selesai: document.getElementById('f-jam-selesai').value || null,
+    kegiatan,
+  };
+
+  if (id) {
+    await supabaseClient.from('daily_plan_template').update(payload).eq('id', id);
+  } else {
+    const user = (await supabaseClient.auth.getUser()).data.user;
+    payload.user_id = user.id;
+    payload.urutan = items.length;
+    await supabaseClient.from('daily_plan_template').insert(payload);
+  }
+  closeForm();
+  showToast('Tersimpan');
+  loadItems();
+}
+
+async function deleteItem(id) {
+  if (!confirm('Hapus kegiatan ini dari rencana harian?')) return;
+  await supabaseClient.from('daily_plan_template').delete().eq('id', id);
+  showToast('Dihapus');
+  loadItems();
+}
+
+async function move(idx, dir) {
+  const other = idx + dir;
+  if (other < 0 || other >= items.length) return;
+  const a = items[idx], b = items[other];
+  await supabaseClient.from('daily_plan_template').update({ urutan: other }).eq('id', a.id);
+  await supabaseClient.from('daily_plan_template').update({ urutan: idx }).eq('id', b.id);
+  loadItems();
+}
+</script>
+</body>
+</html>
