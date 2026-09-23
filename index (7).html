@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Runut</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+</head>
+<body style="background:#FAF8F4; display:flex; align-items:center; justify-content:center; min-height:100vh; font-family:system-ui, sans-serif; color:#6B7280;">
+  Memuat...
+  <script>
+    (async () => {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      window.location.href = session ? 'dashboard.html' : 'login.html';
+    })();
+  </script>
+</body>
+</html>
