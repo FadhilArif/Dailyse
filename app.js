@@ -1,8 +1,8 @@
 // ====== KONFIGURASI SUPABASE ======
 // Ganti dua nilai di bawah ini dengan Project URL dan anon public key
 // dari Supabase kamu (Settings > API).
-const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
+const SUPABASE_URL = "https://lwimzkpbuobacbkmklmg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx3aW16a3BidW9iYWNia21rbG1nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxMTAwOTEsImV4cCI6MjEwNTY4NjA5MX0.vR9eQxg71facEN8Hu3_QZ5SG58kGDAijHlLtq8KFpMg";
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
