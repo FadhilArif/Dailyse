@@ -125,6 +125,38 @@ function addDays(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatDuration(totalMinutes) {
+  const minutes = Math.max(0, Number(totalMinutes) || 0);
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours > 0 && mins > 0) return `${hours} jam ${mins} menit`;
+  if (hours > 0) return `${hours} jam`;
+  return `${mins} menit`;
+}
+
+function formatDurationShort(totalMinutes) {
+  const minutes = Math.max(0, Number(totalMinutes) || 0);
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours > 0 && mins > 0) return `${hours}j ${mins}m`;
+  if (hours > 0) return `${hours}j`;
+  return `${mins}m`;
+}
+
+function splitDuration(totalMinutes) {
+  const minutes = Math.max(0, Number(totalMinutes) || 0);
+  return { hours: Math.floor(minutes / 60), minutes: minutes % 60 };
+}
+
 // =====================================================================
 // LOGIN
 // =====================================================================
@@ -323,7 +355,7 @@ async function dashLoadUsage() {
     <div style="margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:4px;">
         <span style="font-weight:600;">${x.app}</span>
-        <span style="color:var(--muted);">rata-rata ${Math.round(x.avg)} menit/hari</span>
+        <span style="color:var(--muted);">rata-rata ${formatDuration(Math.round(x.avg))}/hari</span>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${(x.avg / maxAvg) * 100}%; background:var(--accent);"></div></div>
     </div>`).join('');
@@ -336,7 +368,7 @@ let sdItems = [];
 
 function viewSetDaily() {
   return `
-    <p style="color:var(--muted); font-size:13.5px; margin-bottom:14px;">
+    <p class="page-note">
       Ini rencana harianmu. Perubahan di sini akan dipakai untuk hari-hari berikutnya di menu Daily Activity —
       catatan yang sudah kamu isi di hari-hari sebelumnya tidak akan berubah.
     </p>
@@ -354,10 +386,7 @@ function viewSetDaily() {
       </div>
     </div>
     <div class="card">
-      <table>
-        <thead><tr><th style="width:36px;"></th><th>Jam</th><th>Kegiatan</th><th style="width:110px;"></th></tr></thead>
-        <tbody id="sd-body"></tbody>
-      </table>
+      <div class="responsive-list sd-list" id="sd-body"></div>
       <div id="sd-empty" class="empty" style="display:none;">Belum ada rencana harian. Mulai dengan menambah kegiatan pertama.</div>
     </div>`;
 }
@@ -377,23 +406,26 @@ async function loadSdItems() {
 function renderSdItems() {
   const body = document.getElementById('sd-body');
   const empty = document.getElementById('sd-empty');
+  if (!body || !empty) return;
   if (sdItems.length === 0) { body.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
   body.innerHTML = sdItems.map((it, idx) => `
-    <tr>
-      <td>
-        <div style="display:flex; flex-direction:column; gap:2px;">
-          <button class="btn ghost" style="padding:2px;" onclick="moveSdItem(${idx},-1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn ghost" style="padding:2px;" onclick="moveSdItem(${idx},1)" ${idx === sdItems.length - 1 ? 'disabled' : ''}>↓</button>
-        </div>
-      </td>
-      <td>${it.jam_mulai || '-'}${it.jam_selesai ? ' - ' + it.jam_selesai : ''}</td>
-      <td>${it.kegiatan}</td>
-      <td class="row-actions">
+    <div class="responsive-item sd-item">
+      <div class="sd-reorder">
+        <button class="btn ghost" aria-label="Naik" onclick="moveSdItem(${idx},-1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn ghost" aria-label="Turun" onclick="moveSdItem(${idx},1)" ${idx === sdItems.length - 1 ? 'disabled' : ''}>↓</button>
+      </div>
+      <div class="sd-main">
+        <div class="responsive-label">Jam</div>
+        <div class="sd-time">${escapeHtml(it.jam_mulai || '-')}${it.jam_selesai ? ' - ' + escapeHtml(it.jam_selesai) : ''}</div>
+        <div class="responsive-label">Kegiatan</div>
+        <div class="sd-title">${escapeHtml(it.kegiatan)}</div>
+      </div>
+      <div class="responsive-actions">
         <button class="btn secondary" onclick="editSdItem('${it.id}')">Edit</button>
         <button class="btn danger" onclick="deleteSdItem('${it.id}')">Hapus</button>
-      </td>
-    </tr>`).join('');
+      </div>
+    </div>`).join('');
 }
 
 function openSdForm() {
@@ -637,10 +669,7 @@ function viewJobTracking() {
       </div>
     </div>
     <div class="card">
-      <table>
-        <thead><tr><th>Tanggal</th><th>Perusahaan</th><th>Via</th><th>Status</th><th>Hasil</th><th style="width:100px;"></th></tr></thead>
-        <tbody id="job-body"></tbody>
-      </table>
+      <div class="responsive-list job-list" id="job-body"></div>
       <div id="job-empty" class="empty" style="display:none;">Belum ada lamaran yang dicatat.</div>
     </div>`;
 }
@@ -665,20 +694,25 @@ async function loadJobItems() {
 function renderJobItems() {
   const body = document.getElementById('job-body');
   const empty = document.getElementById('job-empty');
+  if (!body || !empty) return;
   if (jobItems.length === 0) { body.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
   body.innerHTML = jobItems.map(it => `
-    <tr>
-      <td>${it.tanggal_melamar}</td>
-      <td style="font-weight:600;">${it.perusahaan}</td>
-      <td>${it.metode_kirim || '-'}</td>
-      <td><span class="badge ${STATUS_CLASS[it.status] || ''}">${it.status}</span></td>
-      <td style="max-width:220px;">${it.hasil_akhir || '-'}</td>
-      <td class="row-actions">
+    <div class="responsive-item job-item">
+      <div class="job-main">
+        <div class="job-title">${escapeHtml(it.perusahaan)}</div>
+        <div class="job-meta-grid">
+          <div><span class="responsive-label">Tanggal</span><span>${escapeHtml(it.tanggal_melamar || '-')}</span></div>
+          <div><span class="responsive-label">Via</span><span>${escapeHtml(it.metode_kirim || '-')}</span></div>
+          <div><span class="responsive-label">Status</span><span><span class="badge ${STATUS_CLASS[it.status] || ''}">${escapeHtml(it.status || '-')}</span></span></div>
+          <div class="job-result"><span class="responsive-label">Hasil</span><span>${escapeHtml(it.hasil_akhir || '-')}</span></div>
+        </div>
+      </div>
+      <div class="responsive-actions">
         <button class="btn secondary" onclick="editJobItem('${it.id}')">Edit</button>
         <button class="btn danger" onclick="deleteJobItem('${it.id}')">Hapus</button>
-      </td>
-    </tr>`).join('');
+      </div>
+    </div>`).join('');
 }
 
 function openJobForm() {
@@ -692,6 +726,7 @@ function openJobForm() {
   document.getElementById('job-metode-lain-wrap').style.display = 'none';
   document.getElementById('job-status').value = 'Menunggu';
   document.getElementById('job-hasil').value = '';
+  document.getElementById('job-perusahaan').focus();
 }
 function closeJobForm() { document.getElementById('job-form-card').style.display = 'none'; }
 
@@ -722,19 +757,24 @@ async function saveJobItem() {
 
   const pilihan = document.getElementById('job-metode-pilihan').value;
   const metode = pilihan === 'Lainnya' ? document.getElementById('job-metode-lain').value.trim() : pilihan;
+  if (pilihan === 'Lainnya' && !metode) { showToast('Sebutkan metode pengiriman'); return; }
 
   const payload = {
-    tanggal_melamar: tanggal, perusahaan, metode_kirim: metode,
+    tanggal_melamar: tanggal,
+    perusahaan,
+    metode_kirim: metode,
     status: document.getElementById('job-status').value,
     hasil_akhir: document.getElementById('job-hasil').value.trim(),
   };
 
   const id = document.getElementById('job-edit-id').value;
   if (id) {
-    await supabaseClient.from('job_applications').update(payload).eq('id', id);
+    const { error } = await supabaseClient.from('job_applications').update(payload).eq('id', id);
+    if (error) { showToast('Gagal menyimpan perubahan'); return; }
   } else {
     payload.user_id = currentUser.id;
-    await supabaseClient.from('job_applications').insert(payload);
+    const { error } = await supabaseClient.from('job_applications').insert(payload);
+    if (error) { showToast('Gagal menyimpan lamaran'); return; }
   }
   closeJobForm();
   showToast('Tersimpan');
@@ -743,7 +783,8 @@ async function saveJobItem() {
 
 async function deleteJobItem(id) {
   if (!confirm('Hapus catatan lamaran ini?')) return;
-  await supabaseClient.from('job_applications').delete().eq('id', id);
+  const { error } = await supabaseClient.from('job_applications').delete().eq('id', id);
+  if (error) { showToast('Gagal menghapus'); return; }
   showToast('Dihapus');
   loadJobItems();
 }
@@ -752,52 +793,239 @@ async function deleteJobItem(id) {
 // APP USAGE
 // =====================================================================
 let usRowCounter = 0;
+let usApps = [];
+let usManagerOpen = false;
 
 function viewAppUsage() {
   return `
     <div class="card">
-      <h3 style="margin-bottom:12px;">Setor Penggunaan Hari Ini</h3>
-      <p style="color:var(--muted); font-size:13px; margin-bottom:12px;">
-        Isi durasi pemakaian tiap aplikasi (menit) untuk tanggal di bawah. Data ini yang dirata-ratakan di Dashboard.
-      </p>
-      <div class="field"><label>Tanggal</label><input type="date" id="us-entry-date" style="max-width:200px;" onchange="usLoadEntryDate()"></div>
-      <div id="us-entry-rows"></div>
+      <div class="usage-head">
+        <div>
+          <h3 style="margin-bottom:4px;">Setor Penggunaan Hari Ini</h3>
+          <p class="page-note" style="margin:0;">Pilih aplikasi dan isi durasinya. Nama aplikasi cukup dibuat sekali di daftar aplikasi.</p>
+        </div>
+        <button class="btn secondary" onclick="usToggleManager()">⚙ Kelola Aplikasi</button>
+      </div>
+
+      <div class="field">
+        <label>Tanggal</label>
+        <input type="date" id="us-entry-date" class="date-input">
+      </div>
+
+      <div id="us-entry-rows" class="usage-entry-list"></div>
       <button class="btn ghost" onclick="usAddRow()">+ Tambah aplikasi</button>
-      <div style="margin-top:12px;"><button class="btn" onclick="usSaveEntries()">Simpan Semua</button></div>
+      <div style="margin-top:12px;">
+        <button class="btn" onclick="usSaveEntries()">Simpan Semua</button>
+      </div>
     </div>
+
+    <div class="card usage-manager" id="us-manager" style="display:none;">
+      <div class="usage-manager-head">
+        <div>
+          <h3 style="margin-bottom:4px;">Aplikasi yang Sering Dipakai</h3>
+          <p class="page-note" style="margin:0;">Daftar ini hanya untuk akunmu. Hapus dari sini tidak menghapus riwayat pemakaian.</p>
+        </div>
+        <button class="btn ghost" onclick="usToggleManager(false)">Tutup</button>
+      </div>
+      <div class="usage-add-app">
+        <input type="text" id="us-new-app" placeholder="Contoh: Mobile Legends" maxlength="100" onkeydown="if(event.key==='Enter'){usAddApp();}">
+        <button class="btn" onclick="usAddApp()">+ Tambah</button>
+      </div>
+      <div id="us-app-list" class="app-master-list"></div>
+      <div id="us-app-empty" class="empty" style="display:none;">Belum ada aplikasi. Tambahkan aplikasi yang sering kamu pakai.</div>
+    </div>
+
     <div class="card">
       <h3 style="margin-bottom:12px;">Riwayat Terbaru</h3>
-      <table>
-        <thead><tr><th>Tanggal</th><th>Aplikasi</th><th>Durasi</th><th style="width:70px;"></th></tr></thead>
-        <tbody id="us-history-body"></tbody>
-      </table>
+      <div class="responsive-list usage-history-list" id="us-history-body"></div>
       <div id="us-history-empty" class="empty" style="display:none;">Belum ada riwayat penggunaan aplikasi.</div>
     </div>`;
 }
 
-function initAppUsage() {
+async function initAppUsage() {
+  usManagerOpen = false;
+  usLoadApps();
   document.getElementById('us-entry-date').value = todayStr();
-  usLoadEntryDate();
+  document.getElementById('us-entry-date').addEventListener('change', usLoadEntryDate);
+  await usLoadEntryDate();
   usLoadHistory();
+}
+
+function usToggleManager(force) {
+  const el = document.getElementById('us-manager');
+  if (!el) return;
+  usManagerOpen = typeof force === 'boolean' ? force : !usManagerOpen;
+  el.style.display = usManagerOpen ? 'block' : 'none';
+  if (usManagerOpen) {
+    document.getElementById('us-new-app')?.focus();
+    usRenderApps();
+  }
+}
+
+async function usLoadApps() {
+  const { data, error } = await supabaseClient
+    .from('user_apps')
+    .select('id, nama_app, created_at')
+    .order('nama_app', { ascending: true });
+
+  if (error) {
+    usApps = [];
+    console.error('Gagal memuat daftar aplikasi:', error);
+    showToast('Daftar aplikasi belum siap. Jalankan SQL migration dulu.');
+    usRenderApps();
+    return;
+  }
+
+  usApps = data || [];
+  usRenderApps();
+  usRefreshRowAppOptions();
+}
+
+function usRenderApps() {
+  const list = document.getElementById('us-app-list');
+  const empty = document.getElementById('us-app-empty');
+  if (!list || !empty) return;
+
+  if (usApps.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = usApps.map(app => `
+    <div class="app-master-item">
+      <span>${escapeHtml(app.nama_app)}</span>
+      <button class="btn danger" onclick="usDeleteApp('${app.id}')">Hapus dari daftar</button>
+    </div>`).join('');
+}
+
+async function usAddApp() {
+  const input = document.getElementById('us-new-app');
+  if (!input) return;
+  const nama_app = input.value.trim();
+  if (!nama_app) { showToast('Nama aplikasi wajib diisi'); return; }
+
+  const existing = usApps.find(x => x.nama_app.toLowerCase() === nama_app.toLowerCase());
+  if (existing) {
+    showToast('Aplikasi itu sudah ada');
+    input.select();
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from('user_apps')
+    .insert({ user_id: currentUser.id, nama_app })
+    .select('id, nama_app, created_at')
+    .single();
+
+  if (error) {
+    console.error('Gagal menambah aplikasi:', error);
+    showToast('Gagal menambah aplikasi');
+    return;
+  }
+
+  usApps.push(data);
+  usApps.sort((a, b) => a.nama_app.localeCompare(b.nama_app, 'id'));
+  input.value = '';
+  usRenderApps();
+  usRefreshRowAppOptions();
+  showToast('Aplikasi ditambahkan');
+}
+
+async function usDeleteApp(id) {
+  const app = usApps.find(x => x.id === id);
+  if (!app) return;
+  if (!confirm(`Hapus "${app.nama_app}" dari daftar aplikasi? Riwayat penggunaan tetap aman.`)) return;
+
+  const { error } = await supabaseClient.from('user_apps').delete().eq('id', id);
+  if (error) {
+    showToast('Gagal menghapus aplikasi');
+    return;
+  }
+
+  usApps = usApps.filter(x => x.id !== id);
+  usRenderApps();
+  usRefreshRowAppOptions();
+  showToast('Aplikasi dihapus dari daftar');
+}
+
+function usBuildAppOptions(selected = '', allowHistoryName = true) {
+  const selectedExists = usApps.some(a => a.nama_app === selected);
+  const options = usApps.map(a =>
+    `<option value="${escapeHtml(a.nama_app)}" ${a.nama_app === selected ? 'selected' : ''}>${escapeHtml(a.nama_app)}</option>`
+  ).join('');
+
+  let historyOption = '';
+  if (allowHistoryName && selected && !selectedExists) {
+    historyOption = `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`;
+  }
+
+  const addOption = `<option value="__add_new__">＋ Tambah aplikasi baru...</option>`;
+  return `<option value="">Pilih aplikasi...</option>${options}${historyOption}${addOption}`;
+}
+
+function usRefreshRowAppOptions() {
+  document.querySelectorAll('#us-entry-rows select[data-role="app"]').forEach(select => {
+    const current = select.value;
+    select.innerHTML = usBuildAppOptions(current, true);
+    select.value = current;
+  });
+}
+
+function usHandleAppChange(select) {
+  if (select.value !== '__add_new__') return;
+  select.value = '';
+  usToggleManager(true);
 }
 
 function usAddRow(app = '', menit = '') {
   usRowCounter++;
+  const rowId = 'us-row-' + usRowCounter;
+  const { hours, minutes } = splitDuration(menit);
   const wrap = document.getElementById('us-entry-rows');
+  if (!wrap) return;
+
   const div = document.createElement('div');
-  div.className = 'field-row';
-  div.id = 'us-row-' + usRowCounter;
+  div.className = 'usage-entry-row';
+  div.id = rowId;
   div.innerHTML = `
-    <div class="field"><input type="text" placeholder="Nama aplikasi (mis. MLBB)" value="${app}" data-role="app"></div>
-    <div class="field" style="max-width:140px;"><input type="number" min="0" placeholder="Menit" value="${menit}" data-role="menit"></div>
-    <button class="btn danger" style="height:38px;" onclick="document.getElementById('us-row-${usRowCounter}').remove()">Hapus</button>`;
+    <div class="usage-app-field">
+      <label>Aplikasi</label>
+      <select data-role="app" onchange="usHandleAppChange(this)">
+        ${usBuildAppOptions(app, true)}
+      </select>
+    </div>
+    <div class="usage-duration-field">
+      <label>Durasi</label>
+      <div class="duration-inputs">
+        <input type="number" min="0" max="999" inputmode="numeric" placeholder="Jam" value="${hours}" data-role="hours" aria-label="Jam">
+        <span>jam</span>
+        <input type="number" min="0" max="59" inputmode="numeric" placeholder="Menit" value="${minutes}" data-role="minutes" aria-label="Menit">
+        <span>menit</span>
+      </div>
+    </div>
+    <button class="btn danger usage-remove" onclick="document.getElementById('${rowId}').remove()">Hapus</button>`;
   wrap.appendChild(div);
 }
 
 async function usLoadEntryDate() {
-  document.getElementById('us-entry-rows').innerHTML = '';
-  const date = document.getElementById('us-entry-date').value;
-  const { data } = await supabaseClient.from('app_usage_tracking').select('*').eq('tanggal', date);
+  const wrap = document.getElementById('us-entry-rows');
+  const date = document.getElementById('us-entry-date')?.value;
+  if (!wrap || !date) return;
+  wrap.innerHTML = '';
+
+  const { data, error } = await supabaseClient
+    .from('app_usage_tracking')
+    .select('*')
+    .eq('tanggal', date)
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error('Gagal memuat penggunaan:', error);
+    usAddRow();
+    return;
+  }
+
   if (data && data.length > 0) {
     data.forEach(d => usAddRow(d.nama_app, d.durasi_menit));
   } else {
@@ -806,42 +1034,115 @@ async function usLoadEntryDate() {
 }
 
 async function usSaveEntries() {
-  const date = document.getElementById('us-entry-date').value;
+  const date = document.getElementById('us-entry-date')?.value;
   if (!date) { showToast('Pilih tanggal dulu'); return; }
 
-  await supabaseClient.from('app_usage_tracking').delete().eq('tanggal', date);
+  const rowsEls = [...document.querySelectorAll('#us-entry-rows .usage-entry-row')];
+  const payload = [];
 
-  const rowsEls = [...document.getElementById('us-entry-rows').children];
-  const payload = rowsEls.map(r => ({
-    user_id: currentUser.id, tanggal: date,
-    nama_app: r.querySelector('[data-role="app"]').value.trim(),
-    durasi_menit: parseInt(r.querySelector('[data-role="menit"]').value || '0', 10),
-  })).filter(p => p.nama_app);
+  for (const row of rowsEls) {
+    const app = row.querySelector('[data-role="app"]')?.value || '';
+    const hours = parseInt(row.querySelector('[data-role="hours"]')?.value || '0', 10);
+    const minutes = parseInt(row.querySelector('[data-role="minutes"]')?.value || '0', 10);
+
+    if (!app || app === '__add_new__') continue;
+    const safeHours = Number.isFinite(hours) ? Math.max(0, hours) : 0;
+    const safeMinutes = Number.isFinite(minutes) ? Math.min(59, Math.max(0, minutes)) : 0;
+    const durasi_menit = (safeHours * 60) + safeMinutes;
+
+    if (durasi_menit <= 0) continue;
+
+    payload.push({
+      user_id: currentUser.id,
+      tanggal: date,
+      nama_app: app,
+      durasi_menit,
+    });
+  }
+
+  // Bersihkan entri hari itu lalu simpan versi terbaru.
+  const { error: deleteError } = await supabaseClient
+    .from('app_usage_tracking')
+    .delete()
+    .eq('tanggal', date);
+
+  if (deleteError) {
+    console.error('Gagal memperbarui penggunaan:', deleteError);
+    showToast('Gagal memperbarui penggunaan');
+    return;
+  }
+
+  // Pastikan aplikasi yang dipakai ikut tersimpan di daftar aplikasi.
+  const existingNames = new Set(usApps.map(a => a.nama_app.toLowerCase()));
+  const newApps = payload
+    .map(p => p.nama_app.trim())
+    .filter(name => name && !existingNames.has(name.toLowerCase()))
+    .map(name => ({ user_id: currentUser.id, nama_app: name }));
+
+  if (newApps.length > 0) {
+    const { data: insertedApps } = await supabaseClient
+      .from('user_apps')
+      .insert(newApps)
+      .select('id, nama_app, created_at');
+    if (insertedApps) {
+      usApps = [...usApps, ...insertedApps];
+      usApps.sort((a, b) => a.nama_app.localeCompare(b.nama_app, 'id'));
+      usRenderApps();
+      usRefreshRowAppOptions();
+    }
+  }
 
   if (payload.length > 0) {
-    await supabaseClient.from('app_usage_tracking').insert(payload);
+    const { error } = await supabaseClient.from('app_usage_tracking').insert(payload);
+    if (error) {
+      console.error('Gagal menyimpan penggunaan:', error);
+      showToast('Gagal menyimpan penggunaan');
+      return;
+    }
   }
+
   showToast('Penggunaan aplikasi tersimpan');
   usLoadHistory();
 }
 
 async function usLoadHistory() {
-  const { data } = await supabaseClient.from('app_usage_tracking').select('*').order('tanggal', { ascending: false }).limit(30);
+  const { data, error } = await supabaseClient
+    .from('app_usage_tracking')
+    .select('*')
+    .order('tanggal', { ascending: false })
+    .limit(30);
+
   const body = document.getElementById('us-history-body');
   const empty = document.getElementById('us-history-empty');
-  if (!data || data.length === 0) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  if (!body || !empty) return;
+
+  if (error || !data || data.length === 0) {
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
   empty.style.display = 'none';
   body.innerHTML = data.map(d => `
-    <tr>
-      <td>${d.tanggal}</td>
-      <td style="font-weight:600;">${d.nama_app}</td>
-      <td>${d.durasi_menit} menit</td>
-      <td><button class="btn danger" onclick="usDeleteEntry('${d.id}')">Hapus</button></td>
-    </tr>`).join('');
+    <div class="responsive-item usage-history-item">
+      <div>
+        <div class="usage-history-title">${escapeHtml(d.nama_app)}</div>
+        <div class="usage-history-meta">${escapeHtml(d.tanggal)}</div>
+      </div>
+      <div class="usage-history-duration">${escapeHtml(formatDuration(d.durasi_menit))}</div>
+      <button class="btn danger" onclick="usDeleteEntry('${d.id}')">Hapus</button>
+    </div>`).join('');
 }
 
 async function usDeleteEntry(id) {
-  if (!confirm('Hapus data ini?')) return;
-  await supabaseClient.from('app_usage_tracking').delete().eq('id', id);
+  if (!confirm('Hapus data penggunaan ini?')) return;
+  const { error } = await supabaseClient.from('app_usage_tracking').delete().eq('id', id);
+  if (error) {
+    showToast('Gagal menghapus data');
+    return;
+  }
+  showToast('Dihapus');
   usLoadHistory();
+  usLoadEntryDate();
 }
+
