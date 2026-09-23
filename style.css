@@ -6,11 +6,11 @@
   --ink:#22303A;
   --muted:#6B7280;
   --border:#E7E2D6;
-  --primary:#145C52;
-  --primary-dark:#0D3F38;
-  --primary-soft:#E4EFEC;
-  --accent:#D9A441;
-  --accent-soft:#FBF0D9;
+  --primary:#2354E6;
+  --primary-dark:#152F73;
+  --primary-soft:#E7EDFC;
+  --accent:#38BDF8;
+  --accent-soft:#E3F4FE;
   --danger:#B3452C;
   --danger-soft:#F7E4DD;
   --success:#2F7A4F;
@@ -100,7 +100,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--primary); outlin
 .badge{display:inline-block; padding:3px 10px; border-radius:100px; font-size:12px; font-weight:600;}
 .badge.ceklis{background:var(--primary-soft); color:var(--primary-dark);}
 .badge.belum{background:#F1EEE6; color:var(--muted);}
-.badge.status-menunggu{background:var(--accent-soft); color:#8a6413;}
+.badge.status-menunggu{background:var(--accent-soft); color:#0E6FA3;}
 .badge.status-diproses{background:#E1ECF7; color:#2C5C8A;}
 .badge.status-interview{background:#EFE3F7; color:#6B3FA0;}
 .badge.status-diterima{background:#E1F2E5; color:var(--success);}
